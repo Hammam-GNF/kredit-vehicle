@@ -38,18 +38,27 @@ class CreditCalculationService
         return collect(range(1, $jangkaWaktu))->map(fn ($i) => [
             'angsuran_ke' => $i,
             'angsuran_per_bulan' => $angsuran,
-            'tanggal_jatuh_tempo' => $startDate->copy()->addMonths($i - 1),
+            'tanggal_jatuh_tempo' => $startDate->copy()->addMonths($i),
             'status_pembayaran' => 'UNPAID',
         ])->toArray();
     }
 
     public static function denda(float $angsuranPerBulan, Carbon $tanggalJatuhTempo, Carbon $tanggalAcuan): array
     {
-        $hariTelat = $tanggalAcuan->diffInDays($tanggalJatuhTempo, false);
-        if ($hariTelat <= 0) {
+        $tanggalJatuhTempo = $tanggalJatuhTempo->copy()->startOfDay();
+        $tanggalAcuan = $tanggalAcuan->copy()->startOfDay();
+
+        if ($tanggalAcuan->lte($tanggalJatuhTempo)) {
             return ['hari_telat' => 0, 'denda' => 0];
         }
+
+        $hariTelat = $tanggalJatuhTempo->diffInDays($tanggalAcuan);
+
         $denda = $hariTelat * $angsuranPerBulan * 0.001;
-        return ['hari_telat' => $hariTelat, 'denda' => $denda];
+
+        return [
+            'hari_telat' => $hariTelat,
+            'denda' => round($denda, 2),
+        ];
     }
 }

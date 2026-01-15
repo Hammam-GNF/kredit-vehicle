@@ -8,6 +8,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+use function Symfony\Component\Clock\now;
+
 class KontrakController extends Controller
 {
     public function store(Request $request)
@@ -72,5 +74,41 @@ class KontrakController extends Controller
                 ],
             ],
         ], 201);
+    }
+
+    public function reportDenda(Request $request, $kontrakId)
+    {
+        $tanggalAcuan = $request->input('tanggal_acuan', now());
+        $tanggalAcuan = Carbon::parse($tanggalAcuan);
+
+        $kontrak = Kontrak::with(['jadwalAngsuran' => function ($q) use ($tanggalAcuan) {
+            $q->where('status_pembayaran', 'UNPAID')
+            ->where('tanggal_jatuh_tempo', '<=', $tanggalAcuan);
+        }])->findOrFail($kontrakId);
+
+        $results = [];
+
+        foreach ($kontrak->jadwalAngsuran as $jadwal) {
+            $dendaData = CreditCalculationService::denda(
+                $jadwal->angsuran_per_bulan,
+                Carbon::parse($jadwal->tanggal_jatuh_tempo),
+                $tanggalAcuan
+            );
+
+            $results[] = [
+                'kontrak_no' => $kontrak->kontrak_no,
+                'client_name' => $kontrak->client_name,
+                'angsuran_ke' => $jadwal->angsuran_ke,
+                'hari_keterlambatan' => $dendaData['hari_telat'],
+                'total_denda' => $dendaData['denda'],
+            ];
+        }
+
+        return response()->json([
+            'message' => 'Laporan denda keterlambatan',
+            'tanggal_laporan' => Carbon::now()->toDateString(),
+            'tanggal_acuan' => $tanggalAcuan->toDateString(),
+            'data' => $results
+        ]);
     }
 }
